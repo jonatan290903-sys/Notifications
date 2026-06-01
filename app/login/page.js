@@ -10,17 +10,27 @@ export default function LoginPage() {
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const envMissing  = !supabaseUrl || !supabaseKey;
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError('Email o contraseña incorrectos');
-    } else {
-      router.push('/dashboard');
-      router.refresh();
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setError(error.message);
+      } else if (data?.session) {
+        router.push('/dashboard');
+        router.refresh();
+      } else {
+        setError('No se recibió sesión. Intenta de nuevo.');
+      }
+    } catch (e) {
+      setError('Error de conexión: ' + e.message);
     }
     setLoading(false);
   };
@@ -43,6 +53,14 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">Iniciar sesión</h2>
+
+          {envMissing && (
+            <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg px-4 py-3 mb-4 text-sm">
+              ⚠️ <strong>Faltan variables de entorno en Vercel.</strong><br />
+              Ve a Vercel → tu proyecto → Settings → Environment Variables y agrega:<br />
+              <code className="font-mono">NEXT_PUBLIC_SUPABASE_URL</code> y <code className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">
