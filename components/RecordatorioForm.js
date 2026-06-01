@@ -17,8 +17,11 @@ function ExcelModal({ onClose, onImport }) {
   const [colFecha,  setColFecha]  = useState(null);
   const [colDoc,    setColDoc]    = useState(null);
   const [modo,      setModo]      = useState('individual');
+  const [diasAnticipacion, setDiasAnticipacion] = useState([7]);
   const [loading,   setLoading]   = useState(false);
   const fileRef = useRef();
+
+  const toggleDia = (d) => setDiasAnticipacion((p) => p.includes(d) ? p.filter((x) => x !== d) : [...p, d].sort((a, b) => a - b));
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -66,7 +69,7 @@ function ExcelModal({ onClose, onImport }) {
       fecha:     fi>=0 ? parseDate(r[fi]) : null,
       documento: di>=0 ? String(r[di]??'').trim() : '',
     })).filter((r) => r.nombre);
-    onImport(data, modo);
+    onImport(data, modo, diasAnticipacion);
     onClose();
   };
 
@@ -137,6 +140,28 @@ function ExcelModal({ onClose, onImport }) {
                 ))}
               </div>
             </div>
+
+            {/* Días anticipación (individual mode) */}
+            {modo === 'individual' && (
+              <div>
+                <p className="label">⏰ Avisar con anticipación</p>
+                <div className="flex flex-wrap gap-2">
+                  {DIAS.map((d) => (
+                    <button key={d} type="button" onClick={() => toggleDia(d)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold border-2 transition-colors ${
+                        diasAnticipacion.includes(d)
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300'
+                      }`}>
+                      {d} {d === 1 ? 'día' : 'días'}
+                    </button>
+                  ))}
+                </div>
+                {diasAnticipacion.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Selecciona al menos un día de anticipación</p>
+                )}
+              </div>
+            )}
 
             {/* Preview */}
             {colNombre && (
@@ -218,7 +243,7 @@ export default function RecordatorioForm({ recordatorio: rec, etiquetas, usuario
     setNuevoEmp('');
   };
 
-  const handleExcelImport = async (data, modo) => {
+  const handleExcelImport = async (data, modo, excelDias) => {
     if (modo === 'grupo') {
       setEmpleados((p) => [...p, ...data]);
       return;
@@ -227,6 +252,7 @@ export default function RecordatorioForm({ recordatorio: rec, etiquetas, usuario
     const sb = createClient();
     const { data: { user } } = await sb.auth.getUser();
     if (!data.some((r) => r.fecha)) { alert('No se encontraron fechas. Selecciona la columna de Fecha.'); return; }
+    const diasToUse = excelDias && excelDias.length > 0 ? excelDias : [7];
     let ok = 0;
     for (const row of data) {
       if (!row.nombre || !row.fecha) continue;
@@ -234,7 +260,7 @@ export default function RecordatorioForm({ recordatorio: rec, etiquetas, usuario
         titulo: row.nombre,
         descripcion: row.documento ? `Doc: ${row.documento}` : null,
         tipo: 'fecha', fecha: row.fecha,
-        dias_anticipacion: diasAnticipacion,
+        dias_anticipacion: diasToUse,
         todos_usuarios: todosUsuarios,
         creado_por: user?.id,
       }).select().single();
