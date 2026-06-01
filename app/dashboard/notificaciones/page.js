@@ -72,7 +72,7 @@ export default function NotificacionesPage() {
 
       if (err) throw new Error(err.message);
 
-      const targetIds = todos ? usuarios.map(u => u.id) : selUsuarios;
+      const targetIds = (todos ? usuarios.map(u => u.id) : selUsuarios).filter(uid => uid !== me.id);
       if (targetIds.length > 0) {
         await sb.from('notificacion_push_usuarios').insert(
           targetIds.map(uid => ({ notificacion_id: notif.id, usuario_id: uid }))
