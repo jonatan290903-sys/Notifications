@@ -27,6 +27,7 @@ export default function RecordatoriosPage() {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [showDateFilter, setShowDateFilter] = useState(false);
+  const [filtroEstado, setFiltroEstado] = useState('pendientes'); // 'pendientes' | 'completados' | 'todos'
 
   useEffect(() => {
     const sb = createClient();
@@ -53,10 +54,22 @@ export default function RecordatoriosPage() {
   if (search)   filtered = filtered.filter((r) => r.titulo.toLowerCase().includes(search) || r.empleados.some((e) => e.nombre.toLowerCase().includes(search)));
   if (fechaDesde) filtered = filtered.filter((r) => r.fecha && r.fecha >= fechaDesde);
   if (fechaHasta) filtered = filtered.filter((r) => r.fecha && r.fecha <= fechaHasta);
+  if (filtroEstado === 'pendientes') filtered = filtered.filter(r => !r.completado);
+  else if (filtroEstado === 'completados') filtered = filtered.filter(r => r.completado);
 
   const clearDateFilter = () => { setFechaDesde(''); setFechaHasta(''); };
   const hasDateFilter = fechaDesde || fechaHasta;
   const toggleExpand = (id) => setExpanded((prev) => prev === id ? null : id);
+
+  const toggleCompletado = async (rec) => {
+    const sb = createClient();
+    const newVal = !rec.completado;
+    await sb.from('recordatorios').update({
+      completado: newVal,
+      completado_at: newVal ? new Date().toISOString() : null,
+    }).eq('id', rec.id);
+    setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, completado: newVal } : r));
+  };
 
   if (loading) return (
     <div className="flex items-center justify-center h-full">
@@ -94,6 +107,23 @@ export default function RecordatoriosPage() {
             </Link>
           );
         })}
+      </div>
+
+      {/* Estado filter */}
+      <div className="flex gap-2 mb-4">
+        {[
+          { key: 'pendientes', label: 'Pendientes', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+          { key: 'completados', label: 'Completados', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+          { key: 'todos', label: 'Todos', icon: 'M4 6h16M4 10h16M4 14h16M4 18h16' },
+        ].map(f => (
+          <button key={f.key} onClick={() => setFiltroEstado(f.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-colors ${
+              filtroEstado === f.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+            }`}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d={f.icon}/></svg>
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Date Filter */}
@@ -227,9 +257,23 @@ export default function RecordatoriosPage() {
 
                     {/* Actions */}
                     <td className="td text-right">
-                      <Link href={`/dashboard/recordatorios/${rec.id}`} className="btn-ghost text-xs px-3 py-1.5">
-                        Editar
-                      </Link>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => toggleCompletado(rec)}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                            rec.completado
+                              ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                              : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200'
+                          }`}
+                          title={rec.completado ? 'Marcar como pendiente' : 'Marcar como hecho'}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                          {rec.completado ? 'Hecho' : 'Completar'}
+                        </button>
+                        <Link href={`/dashboard/recordatorios/${rec.id}`} className="btn-ghost text-xs px-3 py-1.5">
+                          Editar
+                        </Link>
+                      </div>
                     </td>
                   </tr>
 
