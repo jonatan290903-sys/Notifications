@@ -19,6 +19,7 @@ export default function NotificacionesPage() {
   const [mensaje,    setMensaje]    = useState('');
   const [todos,      setTodos]      = useState(true);
   const [selUsuarios, setSelUsuarios] = useState([]);
+  const [expiraDias, setExpiraDias] = useState(0); // 0 = sin expiración
 
   // Data
   const [usuarios,   setUsuarios]   = useState([]);
@@ -63,9 +64,10 @@ export default function NotificacionesPage() {
     setSending(true); setError(''); setSuccess('');
 
     try {
+      const expiraAt = expiraDias > 0 ? new Date(Date.now() + expiraDias * 86400000).toISOString() : null;
       const { data: notif, error: err } = await sb
         .from('notificaciones_push')
-        .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), enviado_por: me.id, todos_usuarios: todos })
+        .insert({ titulo: titulo.trim(), mensaje: mensaje.trim(), enviado_por: me.id, todos_usuarios: todos, expira_at: expiraAt })
         .select().single();
 
       if (err) throw new Error(err.message);
@@ -78,13 +80,20 @@ export default function NotificacionesPage() {
       }
 
       setSuccess(`Notificacion enviada a ${targetIds.length} usuario${targetIds.length !== 1 ? 's' : ''}`);
-      setTitulo(''); setMensaje(''); setTodos(true); setSelUsuarios([]);
+      setTitulo(''); setMensaje(''); setTodos(true); setSelUsuarios([]); setExpiraDias(0);
       await loadHistory();
     } catch (err) {
       setError(err.message);
     } finally {
       setSending(false);
     }
+  };
+
+  const deleteNotif = async (id) => {
+    if (!confirm('¿Eliminar esta notificación? Se eliminará para todos los usuarios.')) return;
+    await sb.from('notificacion_push_usuarios').delete().eq('notificacion_id', id);
+    await sb.from('notificaciones_push').delete().eq('id', id);
+    setHistorial(prev => prev.filter(n => n.id !== id));
   };
 
   const toggleUsuario = (id) => setSelUsuarios(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -163,6 +172,30 @@ export default function NotificacionesPage() {
             )}
           </div>
 
+          {/* Expiration */}
+          <div>
+            <label className="label mb-2">Tiempo de vida (opcional)</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { v: 0, l: 'Sin limite' },
+                { v: 1, l: '1 dia' },
+                { v: 3, l: '3 dias' },
+                { v: 7, l: '1 semana' },
+                { v: 30, l: '1 mes' },
+              ].map(opt => (
+                <button key={opt.v} type="button" onClick={() => setExpiraDias(opt.v)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-colors ${
+                    expiraDias === opt.v
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}>
+                  {opt.l}
+                </button>
+              ))}
+            </div>
+            {expiraDias > 0 && <p className="text-xs text-gray-400 mt-1">La notificacion se desactivara automaticamente despues de {expiraDias} dia{expiraDias !== 1 ? 's' : ''}</p>}
+          </div>
+
           <button type="submit" disabled={sending} className="btn-primary">
             {sending
               ? <><div className="w-4 h-4 spinner mr-2"/> Enviando...</>
@@ -197,18 +230,23 @@ export default function NotificacionesPage() {
               const confirmed = n.destinatarios.filter(d => d.confirmada).length;
               const read = n.destinatarios.filter(d => d.leida).length;
               const isExpanded = expandedId === n.id;
+              const isExpired = n.expira_at && new Date(n.expira_at) < new Date();
 
               return (
-                <div key={n.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                <div key={n.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow ${isExpired ? 'border-orange-200 opacity-60' : 'border-gray-100'}`}>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <h3 className="font-semibold text-gray-900">{n.titulo}</h3>
+                          <h3 className={`font-semibold ${isExpired ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{n.titulo}</h3>
                           {n.todos_usuarios
                             ? <span className="badge badge-blue">Todos</span>
                             : <span className="badge badge-gray">{totalDest} usuario{totalDest !== 1 ? 's' : ''}</span>
                           }
+                          {isExpired && <span className="badge badge-orange">Expirada</span>}
+                          {n.expira_at && !isExpired && (
+                            <span className="badge badge-yellow">Expira {new Date(n.expira_at).toLocaleDateString('es-BO')}</span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-600 mb-3">{n.mensaje}</p>
 
@@ -237,15 +275,22 @@ export default function NotificacionesPage() {
                         </div>
                       </div>
 
-                      {/* Expand button */}
-                      {totalDest > 0 && (
-                        <button onClick={() => setExpandedId(isExpanded ? null : n.id)}
-                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all shrink-0 ${isExpanded ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300'}`}>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                          Ver detalle
-                          <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {totalDest > 0 && (
+                          <button onClick={() => setExpandedId(isExpanded ? null : n.id)}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isExpanded ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-blue-300'}`}>
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            Detalle
+                            <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                          </button>
+                        )}
+                        <button onClick={() => deleteNotif(n.id)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
+                          title="Eliminar notificacion">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
-                      )}
+                      </div>
                     </div>
                   </div>
 

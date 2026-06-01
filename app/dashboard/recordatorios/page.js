@@ -60,6 +60,19 @@ export default function RecordatoriosPage() {
   const clearDateFilter = () => { setFechaDesde(''); setFechaHasta(''); };
   const hasDateFilter = fechaDesde || fechaHasta;
   const toggleExpand = (id) => setExpanded((prev) => prev === id ? null : id);
+  const [ordenar, setOrdenar] = useState('proximidad'); // 'proximidad' | 'fecha_asc' | 'fecha_desc'
+
+  // Sort
+  if (ordenar === 'proximidad') {
+    filtered = [...filtered].sort((a, b) => {
+      const da = a.days ?? 9999;
+      const db = b.days ?? 9999;
+      return da - db;
+    });
+  } else if (ordenar === 'fecha_desc') {
+    filtered = [...filtered].sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? ''));
+  }
+  // fecha_asc is default from DB
 
   const toggleCompletado = async (rec) => {
     const sb = createClient();
@@ -69,6 +82,13 @@ export default function RecordatoriosPage() {
       completado_at: newVal ? new Date().toISOString() : null,
     }).eq('id', rec.id);
     setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, completado: newVal } : r));
+  };
+
+  const deleteRecordatorio = async (rec) => {
+    if (!confirm(`¿Eliminar "${rec.titulo}"? Esta acción no se puede deshacer.`)) return;
+    const sb = createClient();
+    await sb.from('recordatorios').delete().eq('id', rec.id);
+    setRecords(prev => prev.filter(r => r.id !== rec.id));
   };
 
   if (loading) return (
@@ -109,7 +129,21 @@ export default function RecordatoriosPage() {
         })}
       </div>
 
-      {/* Estado filter */}
+      {/* Orden + Estado filter */}
+      <div className="flex items-center gap-4 mb-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-gray-500">Ordenar:</span>
+          <select
+            value={ordenar}
+            onChange={e => setOrdenar(e.target.value)}
+            className="text-xs font-semibold border-2 border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer"
+          >
+            <option value="proximidad">Mas cercanas primero</option>
+            <option value="fecha_asc">Fecha ascendente</option>
+            <option value="fecha_desc">Fecha descendente</option>
+          </select>
+        </div>
+      </div>
       <div className="flex gap-2 mb-4">
         {[
           { key: 'pendientes', label: 'Pendientes', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
@@ -273,6 +307,13 @@ export default function RecordatoriosPage() {
                         <Link href={`/dashboard/recordatorios/${rec.id}`} className="btn-ghost text-xs px-3 py-1.5">
                           Editar
                         </Link>
+                        <button
+                          onClick={() => deleteRecordatorio(rec)}
+                          className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold text-red-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
+                          title="Eliminar recordatorio"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
                       </div>
                     </td>
                   </tr>
